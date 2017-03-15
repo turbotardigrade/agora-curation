@@ -4,7 +4,7 @@ import Queue
 import curation
 
 quit = False
-jobs = Queue.LifoQueue()
+jobs = Queue.Queue()
 
 def handler(signum, frame):
     global quit
@@ -35,5 +35,6 @@ def handle_job():
                       ("id", job["id"])]
 
 threading.Thread(target=handle_job).start()
+
 while not quit:
     jobs.put(json.loads(raw_input())
