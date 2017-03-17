@@ -1,8 +1,10 @@
 import Queue
 import signal
-
+quit = False
 jobs = Queue.Queue()
 def handler(signum, frame):
+    global quit
+    quit = True
     jobs.put({"command":"quit", "error": "SIGINT received", "id": -1})
     raise EOFError
 
@@ -13,7 +15,6 @@ import curation
 import threading, os, sys
 os.chdir(sys.path[0])
 log = open("log.txt", "a+", buffering=1)
-quit = False
 
 def handle_job():
     global log
@@ -33,8 +34,8 @@ def handle_job():
                             "error": None,
                             "id": job["id"]
                         }
-            print json.dumps(result)
-            raise KeyboardInterrupt
+            print json.dumps(result, separators=(',', ': ')) + "\n"
+            sys.stdout.flush()
         try:
             function = getattr(curation, job["command"])
             job_result = function(job["arguments"])
