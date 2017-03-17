@@ -1,5 +1,4 @@
 from sklearn.feature_extraction.text import HashingVectorizer
-from sklearn import preprocessing
 from sklearn.naive_bayes import MultinomialNB
 from sklearn.externals import joblib
 from scipy import sparse
@@ -15,7 +14,9 @@ os.chdir(sys.path[0])
 
 comment = joblib.load("comment.pkl")
 post = joblib.load("post.pkl")
-log = open("log.txt", "a+", buffering=1)
+
+# log for debugging
+# log = open("log.txt", "a+", buffering=1)
 
 word_vectorizer = HashingVectorizer(decode_error='ignore',
                                     n_features=2 ** 10, non_negative=True)
@@ -117,7 +118,6 @@ def get_content(args):
               FROM posts
               ORDER BY flag """
     posts_hash = cursor.execute(sql).fetchall()
-    log.write("posts hash: {}\n".format(posts_hash))
     formatted_hashes = []
     for i in posts_hash:
         formatted_hashes.append(i[0])

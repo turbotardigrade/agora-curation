@@ -14,7 +14,9 @@ import json
 import curation
 import threading, os, sys
 os.chdir(sys.path[0])
-log = open("log.txt", "a+", buffering=1)
+
+# log for debugging
+# log = open("log.txt", "a+", buffering=1)
 
 def handle_job():
     global log
