@@ -13,7 +13,7 @@ signal.signal(signal.SIGINT, handler)
 import json
 import curation
 import threading, os, sys
-os.chdir(sys.path[0])
+os.chdir(os.path.dirname(sys.executable))
 
 # log for debugging
 # log = open("log.txt", "a+", buffering=1)

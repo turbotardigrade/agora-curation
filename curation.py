@@ -3,6 +3,7 @@ from sklearn.naive_bayes import MultinomialNB
 from sklearn.externals import joblib
 from scipy import sparse
 from datetime import timedelta
+import numpy as np
 import sqlite3
 import warnings
 import os, sys
@@ -10,7 +11,7 @@ import os, sys
 with warnings.catch_warnings():
     warnings.simplefilter("ignore")
 
-os.chdir(sys.path[0])
+os.chdir(os.path.dirname(sys.executable))
 
 comment = joblib.load("comment.pkl")
 post = joblib.load("post.pkl")
@@ -23,50 +24,6 @@ word_vectorizer = HashingVectorizer(decode_error='ignore',
 bigram_vectorizer = HashingVectorizer(analyzer='char', n_features=2 ** 10,
                                       non_negative=True, ngram_range=(1,2))
 settings = {"keep_for": timedelta(days=180)}
-""" concatenates content and data for posts and then calls transform_comment """
-def transform_post(data):
-    data['Content'] = data['Content'] + "\n" + data['Title']
-    return transform_comment(data)
-
-""" transform_data accepts a data array and transforms it into
-    the model vector format """
-def transform_comment(data):
-    """ The data format of the trained schema is:
-        data['Content'] transformed by bigram_vectorizer (1024 features)
-        data['Content'] transformed by word_vectorizer (1024 features)
-        data['Hash'] transformed by word_vectorizer (1024 features)
-        data['Alias'] transformed by word_vectorizer (1024 features) """
-    content_bigram = bigram_vectorizer.transform([data['Content']])
-    content_word = word_vectorizer.transform([data['Content']])
-    hash_id = word_vectorizer.transform([data['Hash']])
-    alias = word_vectorizer.transform([data['Alias']])
-    return sparse.hstack([content_bigram, content_word, hash_id, alias])
-
-def store_post(data, cursor):
-    sql = """ INSERT INTO posts(title, content, hash, alias, timestamp)
-              VALUES (?, ?, ?, ?, ?) """
-    cursor.execute(sql, [data['Title'], data['Content'],
-                         data['Hash'], data['Alias'],
-                         data['Timestamp']])
-
-def store_comment(data, cursor):
-    sql = """ INSERT INTO comments(content, hash, alias, timestamp)
-              VALUES (?, ?, ?, ?) """
-    cursor.execute(sql, [data['Content'], data['Hash'], data['Alias'], data['Timestamp']])
-
-def retrieve_post(hash_id, cursor):
-    sql = """ SELECT title, content, hash, alias, timestamp, flag
-              FROM posts
-              WHERE hash = ? """
-    post = cursor.execute(sql, [hash_id]).fetchall()[0]
-    return {"Title": post[0], "Content": post[1], "Hash": post[2], "Alias": post[3], "Timestamp": post[4], "Flag": post[5]}
-
-def retrieve_comment(hash_id, cursor):
-    sql = """ SELECT content, hash, alias, timestamp, flag
-              FROM comments
-              WHERE hash = ? """
-    comment = cursor.execute(sql, [hash_id]).fetchall()[0]
-    return {"Content": comment[0], "Hash": comment[1], "Alias": comment[2], "Timestamp": comment[3], "Flag": comment[4]}
 
 """ on_post_added will be called when new posts are retrieved
     from other peers, if this functions returns false, the
@@ -77,11 +34,11 @@ def on_post_added(args):
         conn = sqlite3.connect("database.db")
         cursor = conn.cursor()
         if args["isWhitelabeled"] == True:
-            store_post(args['obj'], cursor)
+            _store_post(args['obj'], cursor)
             conn.commit()
             return {"result": True, "error": None}
-        if post.predict(transform_post(args['obj'])) == 'False':
-            store_post(args['obj'], cursor)
+        if post.predict(_transform_post(args['obj']))[0] == 'False':
+            _store_post(args['obj'], cursor)
             conn.commit()
             return {"result": True, "error": None}
         return {"result": False, "error": None}
@@ -97,11 +54,11 @@ def on_comment_added(args):
         conn = sqlite3.connect("database.db")
         cursor = conn.cursor()
         if args["isWhitelabeled"] == True:
-            store_comment(args['obj'], cursor)
+            _store_comment(args['obj'], cursor)
             conn.commit()
             return {"result": True, "error": None}
-        if post.predict(transform_comment(args['obj'])) == 'False':
-            store_comment(args['obj'], cursor)
+        if comment.predict(_transform_comment(args['obj']))[0] == 'False':
+            _store_comment(args['obj'], cursor)
             conn.commit()
             return {"result": True, "error": None}
         return {"result": False, "error": None}
@@ -114,9 +71,9 @@ def get_content(args):
     # TODO: Use lerot to implement this function...?
     conn = sqlite3.connect("database.db")
     cursor = conn.cursor()
-    sql = """ SELECT hash
+    sql = """ SELECT hash, upvotes - downvotes AS score
               FROM posts
-              ORDER BY flag """
+              ORDER BY flag, score """
     posts_hash = cursor.execute(sql).fetchall()
     formatted_hashes = []
     for i in posts_hash:
@@ -135,31 +92,16 @@ def flag_content(args):
         post_count = cursor.execute(post_sql, [args['hash']]).fetchall()[0][0]
         comment_count = cursor.execute(comment_sql, [args['hash']]).fetchall()[0][0]
         if post_count > 0:
-            ret = flag_post(args, cursor)
+            _flag_post(args, cursor)
             conn.commit()
-            return ret
+            return {"result": "ok", "error": None}
         if comment_count > 0:
-            ret = flag_comment(args, cursor)
+            _flag_comment(args, cursor)
             conn.commit()
-            return ret
+            return {"result": "ok", "error": None}
         return {"result": None, "error": "content not found"}
     except Exception as e:
         return {"result": None, "error": e.message}
-
-def flag_post(args, cursor):
-    update_post_sql = "UPDATE posts SET flag = ? WHERE hash = ?"
-    cursor.execute(update_post_sql, [args['isFlagged'], args['hash']])
-    # train using this example
-    X_vec = transform_post(retrieve_post(args['hash'], cursor))
-    y_vec = np.asarray(['True' if args['isFlagged'] else 'False'])
-    post.partial_fit(X_vec, y_vec, classes=[1, 0])
-
-def flag_comment(args, cursor):
-    update_comment_sql = "UPDATE comments SET flag = ? WHERE hash = ?"
-    cursor.execute(update_comment_sql, [args['isFlagged'], args['hash']])
-    X_vec = transform_comment(retrieve_comment(args['hash'], cursor))
-    y_vec = np.asarray(['True' if args['isFlagged'] else 'False'])
-    comment.partial_fit(X_vec, y_vec, classes=['True', 'False'])
 
 """ UpvoteContent is called when user upvotes content """
 def upvote_content(args):
@@ -171,30 +113,16 @@ def upvote_content(args):
         post_count = cursor.execute(post_sql, [args['hash']]).fetchall()[0][0]
         comment_count = cursor.execute(comment_sql, [args['hash']]).fetchall()[0][0]
         if post_count > 0:
-            ret = upvote_post(args, cursor)
+            _upvote_post(args, cursor)
             conn.commit()
-            return ret
+            return {"result": "ok", "error": None}
         if comment_count > 0:
-            ret = upvote_comment(args, cursor)
+            _upvote_comment(args, cursor)
             conn.commit()
-            return ret
+            return {"result": "ok", "error": None}
         return {"result": None, "error": "content not found"}
     except Exception as e:
         return {"result": None, "error": e.message}
-
-def upvote_post(args, cursor):
-    update_post_sql = "UPDATE posts SET upvotes = upvotes + 1 WHERE hash = ?"
-    cursor.execute(update_post_sql, [args['hash']])
-    X_vec = transform_post(retrieve_post(args['hash'], cursor))
-    y_vec = np.asarray(['True' if args['isFlagged'] else 'False'])
-    post.partial_fit(X_vec, y_vec, classes=['True', 'False'])
-
-def upvote_comment(args, cursor):
-    update_comment_sql = "UPDATE comments SET upvotes = upvotes + 1 WHERE hash = ?"
-    cursor.execute(update_comment_sql, [args['hash']])
-    X_vec = transform_comment(retrieve_comment(args['hash'], cursor))
-    y_vec = np.asarray(['True' if args['isFlagged'] else 'False'])
-    comment.partial_fit(X_vec, y_vec, classes=['True', 'False'])
 
 """ DownvoteContent is called when user downvotes content """
 def downvote_content(args):
@@ -206,31 +134,115 @@ def downvote_content(args):
         post_count = cursor.execute(post_sql, [args['hash']]).fetchall()[0][0]
         comment_count = cursor.execute(comment_sql, [args['hash']]).fetchall()[0][0]
         if post_count > 0:
-            ret = downvote_post(args, cursor)
+            _downvote_post(args, cursor)
             conn.commit()
-            return ret
+            return {"result": "ok", "error": None}
         if comment_count > 0:
-            ret = downvote_content(args, cursor)
+            _downvote_content(args, cursor)
             conn.commit()
-            return ret
+            return {"result": "ok", "error": None}
         return {"result": None, "error": "content not found"}
     except Exception as e:
         return {"result": None, "error": e.message}
 
-def downvote_post(args, cursor):
-    update_post_sql = "UPDATE posts SET downvotes = downvotes + 1 WHERE hash = ?"
-    cursor.execute(update_post_sql, [args['hash']])
-    X_vec = transform_post(retrieve_post(args['hash'], cursor))
-    y_vec = np.asarray(['False'])
-    post.partial_fit(X_vec, y_vec, classes=['True', 'False'])
-
-def downvote_comment(args, cursor):
-    update_comment_sql = "UPDATE comments SET downvotes = downvotes + 1 WHERE hash = ?"
-    cursor.execute(update_comment_sql, [args['hash']])
-    X_vec = transform_comment(retrieve_comment(args['hash'], cursor))
-    y_vec = np.asarray(['False'])
-    comment.partial_fit(X_vec, y_vec, classes=['True', 'False'])
-
 def close():
     # TODO: save newly trained warnings
     return
+
+# INTERNAL FUNCTIONS
+
+""" concatenates content and data for posts and then calls _transform_comment """
+def _transform_post(data):
+    data['Content'] = data['Content'] + "\n" + data['Title']
+    return _transform_comment(data)
+
+""" transform_data accepts a data array and transforms it into
+    the model vector format """
+def _transform_comment(data):
+    """ The data format of the trained schema is:
+        data['Content'] transformed by bigram_vectorizer (1024 features)
+        data['Content'] transformed by word_vectorizer (1024 features)
+        data['Hash'] transformed by word_vectorizer (1024 features)
+        data['Alias'] transformed by word_vectorizer (1024 features) """
+    content_bigram = bigram_vectorizer.transform([data['Content']])
+    content_word = word_vectorizer.transform([data['Content']])
+    hash_id = word_vectorizer.transform([data['Hash']])
+    alias = word_vectorizer.transform([data['Alias']])
+    return sparse.hstack([content_bigram, content_word, hash_id, alias])
+
+# post and comment storage
+
+def _store_post(data, cursor):
+    sql = """ INSERT INTO posts(title, content, hash, alias, timestamp)
+              VALUES (?, ?, ?, ?, ?) """
+    cursor.execute(sql, [data['Title'], data['Content'],
+                         data['Hash'], data['Alias'],
+                         data['Timestamp']])
+
+def _store_comment(data, cursor):
+    sql = """ INSERT INTO comments(content, hash, alias, timestamp)
+              VALUES (?, ?, ?, ?) """
+    cursor.execute(sql, [data['Content'], data['Hash'], data['Alias'], data['Timestamp']])
+
+# post and comment retrieval
+
+def _retrieve_post(hash_id, cursor):
+    sql = """ SELECT title, content, hash, alias, timestamp, flag
+              FROM posts
+              WHERE hash = ? """
+    post = cursor.execute(sql, [hash_id]).fetchall()[0]
+    return {"Title": post[0], "Content": post[1], "Hash": post[2], "Alias": post[3], "Timestamp": post[4], "Flag": post[5]}
+
+def _retrieve_comment(hash_id, cursor):
+    sql = """ SELECT content, hash, alias, timestamp, flag
+              FROM comments
+              WHERE hash = ? """
+    comment = cursor.execute(sql, [hash_id]).fetchall()[0]
+    return {"Content": comment[0], "Hash": comment[1], "Alias": comment[2], "Timestamp": comment[3], "Flag": comment[4]}
+
+# flagging functions
+
+def _flag_post(args, cursor):
+    update_post_sql = "UPDATE posts SET flag = ? WHERE hash = ?"
+    cursor.execute(update_post_sql, [args['isFlagged'], args['hash']])
+    # train using this example
+    X_vec = _transform_post(_retrieve_post(args['hash'], cursor))
+    y_vec = np.asarray(['True' if args['isFlagged'] else 'False'])
+    post.partial_fit(X_vec, y_vec, classes=['True', 'False'])
+
+def _flag_comment(args, cursor):
+    update_comment_sql = "UPDATE comments SET flag = ? WHERE hash = ?"
+    cursor.execute(update_comment_sql, [args['isFlagged'], args['hash']])
+    X_vec = _transform_comment(_retrieve_comment(args['hash'], cursor))
+    y_vec = np.asarray(['True' if args['isFlagged'] else 'False'])
+    comment.partial_fit(X_vec, y_vec, classes=['True', 'False'])
+
+# voting functions
+
+def _upvote_post(args, cursor):
+    update_post_sql = "UPDATE posts SET upvotes = upvotes + 1 WHERE hash = ?"
+    cursor.execute(update_post_sql, [args['hash']])
+    X_vec = _transform_post(_retrieve_post(args['hash'], cursor))
+    y_vec = np.asarray(['True' if args['isFlagged'] else 'False'])
+    post.partial_fit(X_vec, y_vec, classes=['True', 'False'])
+
+def _upvote_comment(args, cursor):
+    update_comment_sql = "UPDATE comments SET upvotes = upvotes + 1 WHERE hash = ?"
+    cursor.execute(update_comment_sql, [args['hash']])
+    X_vec = _transform_comment(_retrieve_comment(args['hash'], cursor))
+    y_vec = np.asarray(['True' if args['isFlagged'] else 'False'])
+    comment.partial_fit(X_vec, y_vec, classes=['True', 'False'])
+
+def _downvote_post(args, cursor):
+    update_post_sql = "UPDATE posts SET downvotes = downvotes + 1 WHERE hash = ?"
+    cursor.execute(update_post_sql, [args['hash']])
+    X_vec = _transform_post(_retrieve_post(args['hash'], cursor))
+    y_vec = np.asarray(['False'])
+    post.partial_fit(X_vec, y_vec, classes=['True', 'False'])
+
+def _downvote_comment(args, cursor):
+    update_comment_sql = "UPDATE comments SET downvotes = downvotes + 1 WHERE hash = ?"
+    cursor.execute(update_comment_sql, [args['hash']])
+    X_vec = _transform_comment(_retrieve_comment(args['hash'], cursor))
+    y_vec = np.asarray(['False'])
+    comment.partial_fit(X_vec, y_vec, classes=['True', 'False'])

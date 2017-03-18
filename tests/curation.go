@@ -67,7 +67,7 @@ var scanner *bufio.Scanner
 // Init initializes boltdb which simply keeps track of saved hashes
 // and their arrivaltime
 func (c *MLCurator) Init() error {
-	cmd = exec.Command("../dist/main/main")
+	cmd = exec.Command("../dist/main")
 	in, _ = cmd.StdinPipe()
 	out, _ := cmd.StdoutPipe()
 	scanner = bufio.NewScanner(out)
@@ -179,7 +179,6 @@ func sendCommand(command Command) (*Result, error) {
 			break
 		}
 	}
-	fmt.Println("Parsing: " + scanner.Text())
 	err = json.Unmarshal([]byte(scanner.Text()), &res)
 	if err != nil {
 		fmt.Println("UNMARSHAL: " + err.Error())
