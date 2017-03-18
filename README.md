@@ -14,8 +14,14 @@ Make sure you have installed:
 5. scikit-learn
 6. PyInstaller
 
-# Run tests on curation integration
+# Building
 ```
 ./install.sh
-cd tests; go build; ./tests
+```
+You will find the binary `main` in the `dist` folder.
+This is the main executable.
+
+# Run tests on curation integration
+```
+./test.sh
 ```
