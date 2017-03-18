@@ -46,7 +46,7 @@ type Curator interface {
 	Close() error
 }
 
-type Command struct {
+type CCommand struct {
 	Id        int                    `json:"id"`
 	Command   string                 `json:"command"`
 	Arguments map[string]interface{} `json:"arguments"`
@@ -76,7 +76,7 @@ func (c *MLCurator) Init() error {
 }
 
 func (c *MLCurator) OnPostAdded(obj *Post, isWhitelabeled bool) bool {
-	res, _ := sendCommand(Command{
+	res, _ := sendCommand(CCommand{
 		rand.Int(), "on_post_added", map[string]interface{}{
 			"obj":            obj,
 			"isWhitelabeled": isWhitelabeled,
@@ -91,7 +91,7 @@ func (c *MLCurator) OnPostAdded(obj *Post, isWhitelabeled bool) bool {
 }
 
 func (c *MLCurator) OnCommentAdded(obj *Comment, isWhitelabeled bool) bool {
-	res, _ := sendCommand(Command{
+	res, _ := sendCommand(CCommand{
 		rand.Int(), "on_comment_added", map[string]interface{}{
 			"obj":            obj,
 			"isWhitelabeled": isWhitelabeled,
@@ -105,7 +105,7 @@ func (c *MLCurator) OnCommentAdded(obj *Comment, isWhitelabeled bool) bool {
 }
 
 func (c *MLCurator) GetContent(params map[string]interface{}) []string {
-	res, _ := sendCommand(Command{
+	res, _ := sendCommand(CCommand{
 		rand.Int(), "get_content", map[string]interface{}{
 			"params": params,
 		},
@@ -125,7 +125,7 @@ func (c *MLCurator) GetContent(params map[string]interface{}) []string {
 }
 
 func (c *MLCurator) FlagContent(hash string, isFlagged bool) {
-	sendCommand(Command{
+	sendCommand(CCommand{
 		rand.Int(), "flag_content", map[string]interface{}{
 			"hash":      hash,
 			"isFlagged": isFlagged,
@@ -134,7 +134,7 @@ func (c *MLCurator) FlagContent(hash string, isFlagged bool) {
 }
 
 func (c *MLCurator) UpvoteContent(hash string) {
-	sendCommand(Command{
+	sendCommand(CCommand{
 		rand.Int(), "upvote_content", map[string]interface{}{
 			"hash": hash,
 		},
@@ -142,7 +142,7 @@ func (c *MLCurator) UpvoteContent(hash string) {
 }
 
 func (c *MLCurator) DownvoteContent(hash string) {
-	sendCommand(Command{
+	sendCommand(CCommand{
 		rand.Int(), "downvote_content", map[string]interface{}{
 			"hash": hash,
 		},
@@ -150,13 +150,13 @@ func (c *MLCurator) DownvoteContent(hash string) {
 }
 
 func (c *MLCurator) Close() error {
-	_, err := sendCommand(Command{
+	_, err := sendCommand(CCommand{
 		rand.Int(), "quit", nil,
 	})
 	return err
 }
 
-func sendCommand(command Command) (*Result, error) {
+func sendCommand(command CCommand) (*Result, error) {
 	obj, err := json.Marshal(command)
 	var res Result
 	if err != nil {

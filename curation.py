@@ -146,7 +146,9 @@ def downvote_content(args):
         return {"result": None, "error": e.message}
 
 def close():
-    # TODO: save newly trained warnings
+    # TODO: save newly trained models
+    joblib.dump(post, 'post.pkl')
+    joblib.dump(comment, 'comment.pkl')
     return
 
 # INTERNAL FUNCTIONS
@@ -190,15 +192,19 @@ def _retrieve_post(hash_id, cursor):
     sql = """ SELECT title, content, hash, alias, timestamp, flag
               FROM posts
               WHERE hash = ? """
-    post = cursor.execute(sql, [hash_id]).fetchall()[0]
-    return {"Title": post[0], "Content": post[1], "Hash": post[2], "Alias": post[3], "Timestamp": post[4], "Flag": post[5]}
+    post_res = cursor.execute(sql, [hash_id]).fetchall()[0]
+    return {"Title": post_res[0], "Content": post_res[1],
+            "Hash": post_res[2], "Alias": post_res[3],
+            "Timestamp": post_res[4], "Flag": post_res[5]}
 
 def _retrieve_comment(hash_id, cursor):
     sql = """ SELECT content, hash, alias, timestamp, flag
               FROM comments
               WHERE hash = ? """
-    comment = cursor.execute(sql, [hash_id]).fetchall()[0]
-    return {"Content": comment[0], "Hash": comment[1], "Alias": comment[2], "Timestamp": comment[3], "Flag": comment[4]}
+    comment_res = cursor.execute(sql, [hash_id]).fetchall()[0]
+    return {"Content": comment_res[0], "Hash": comment_res[1],
+            "Alias": comment_res[2], "Timestamp": comment_res[3],
+            "Flag": comment_res[4]}
 
 # flagging functions
 
