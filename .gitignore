@@ -1,7 +1,6 @@
 agora-curation
 curation_schema.txt
 ignore/
-tests/tests
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

@@ -7,44 +7,9 @@ import (
 	"io"
 	"math/rand"
 	"os/exec"
+	"os"
+	"path"
 )
-
-var MyCurator = MLCurator{}
-
-type Curator interface {
-	// Init will be called on initialization, use this function to
-	// initialize your curation module
-	Init() error
-
-	// OnPostAdded will be called when new posts are retrieved
-	// from other peers, if this functions returns false, the
-	// content will be rejected (e.g. in the case of spam) and not
-	// stored by our node
-	OnPostAdded(obj *Post, isWhitelabeled bool) bool
-
-	// OnCommentAdded will be called when new comments are
-	// retrieved from other peers, if this functions returns
-	// false, the content will be rejected (e.g. in the case of
-	// spam) and not stored by our node
-	OnCommentAdded(obj *Comment, isWhitelabeled bool) bool
-
-	// GetContent gives back an ordered array of post hashes of
-	// suggested content by the curation module
-	GetContent(params map[string]interface{})
-
-	// FlagContent marks or unmarks hashes as spam. True means
-	// content is flagged as spam, false means content is not
-	// flagged as spam
-	FlagContent(hash string, isFlagged bool)
-
-	// UpvoteContent is called when user upvotes a content
-	UpvoteContent(hash string)
-
-	// DownvoteContent is called when user downvotes a content
-	DownvoteContent(hash string)
-
-	Close() error
-}
 
 type CCommand struct {
 	Id        int                    `json:"id"`
@@ -58,25 +23,26 @@ type Result struct {
 	Error  string      `json:"error"`
 }
 
-type MLCurator struct{}
+type MLCurator struct{
+	cmd *exec.Cmd
+	in io.WriteCloser
+	scanner *bufio.Scanner
+}
 
-var cmd *exec.Cmd
-var in io.WriteCloser
-var scanner *bufio.Scanner
-
-// Init initializes boltdb which simply keeps track of saved hashes
-// and their arrivaltime
 func (c *MLCurator) Init() error {
-	cmd = exec.Command("../dist/main")
-	in, _ = cmd.StdinPipe()
-	out, _ := cmd.StdoutPipe()
-	scanner = bufio.NewScanner(out)
-	cmd.Start()
-	return nil
+	ex, err := os.Executable()
+	exPath := path.Dir(ex)
+	os.Chdir(exPath)
+	c.cmd = exec.Command("./dist/main")
+	c.in, _ = c.cmd.StdinPipe()
+	out, _ := c.cmd.StdoutPipe()
+	c.scanner = bufio.NewScanner(out)
+	c.cmd.Start()
+	return err
 }
 
 func (c *MLCurator) OnPostAdded(obj *Post, isWhitelabeled bool) bool {
-	res, _ := sendCommand(CCommand{
+	res, _ := c.sendCommand(CCommand{
 		rand.Int(), "on_post_added", map[string]interface{}{
 			"obj":            obj,
 			"isWhitelabeled": isWhitelabeled,
@@ -91,7 +57,7 @@ func (c *MLCurator) OnPostAdded(obj *Post, isWhitelabeled bool) bool {
 }
 
 func (c *MLCurator) OnCommentAdded(obj *Comment, isWhitelabeled bool) bool {
-	res, _ := sendCommand(CCommand{
+	res, _ := c.sendCommand(CCommand{
 		rand.Int(), "on_comment_added", map[string]interface{}{
 			"obj":            obj,
 			"isWhitelabeled": isWhitelabeled,
@@ -105,7 +71,7 @@ func (c *MLCurator) OnCommentAdded(obj *Comment, isWhitelabeled bool) bool {
 }
 
 func (c *MLCurator) GetContent(params map[string]interface{}) []string {
-	res, _ := sendCommand(CCommand{
+	res, _ := c.sendCommand(CCommand{
 		rand.Int(), "get_content", map[string]interface{}{
 			"params": params,
 		},
@@ -125,7 +91,7 @@ func (c *MLCurator) GetContent(params map[string]interface{}) []string {
 }
 
 func (c *MLCurator) FlagContent(hash string, isFlagged bool) {
-	sendCommand(CCommand{
+	c.sendCommand(CCommand{
 		rand.Int(), "flag_content", map[string]interface{}{
 			"hash":      hash,
 			"isFlagged": isFlagged,
@@ -134,7 +100,7 @@ func (c *MLCurator) FlagContent(hash string, isFlagged bool) {
 }
 
 func (c *MLCurator) UpvoteContent(hash string) {
-	sendCommand(CCommand{
+	c.sendCommand(CCommand{
 		rand.Int(), "upvote_content", map[string]interface{}{
 			"hash": hash,
 		},
@@ -142,7 +108,7 @@ func (c *MLCurator) UpvoteContent(hash string) {
 }
 
 func (c *MLCurator) DownvoteContent(hash string) {
-	sendCommand(CCommand{
+	c.sendCommand(CCommand{
 		rand.Int(), "downvote_content", map[string]interface{}{
 			"hash": hash,
 		},
@@ -150,38 +116,36 @@ func (c *MLCurator) DownvoteContent(hash string) {
 }
 
 func (c *MLCurator) Close() error {
-	_, err := sendCommand(CCommand{
+	_, err := c.sendCommand(CCommand{
 		rand.Int(), "quit", nil,
 	})
 	return err
 }
 
-func sendCommand(command CCommand) (*Result, error) {
+// send command to pipe and read corresponding response
+func (c *MLCurator) sendCommand(command CCommand) (*Result, error) {
 	obj, err := json.Marshal(command)
 	var res Result
 	if err != nil {
-		fmt.Println("Marshal: " + err.Error())
 		res = Result{
 			command.Id, nil, "Marshal: " + err.Error(),
 		}
 		return &res, err
 	}
-	_, err = io.WriteString(in, string(obj)+"\n")
+	_, err = io.WriteString(c.in, string(obj)+"\n")
 	if err != nil {
-		fmt.Println("I/O: " + err.Error())
 		res = Result{
 			command.Id, nil, "I/O: " + err.Error(),
 		}
 		return &res, err
 	}
-	for scanner.Scan() {
-		if len(scanner.Text()) > 0 {
+	for c.scanner.Scan() {
+		if len(c.scanner.Text()) > 0 {
 			break
 		}
 	}
-	err = json.Unmarshal([]byte(scanner.Text()), &res)
+	err = json.Unmarshal([]byte(c.scanner.Text()), &res)
 	if err != nil {
-		fmt.Println("UNMARSHAL: " + err.Error())
 		res = Result{
 			command.Id, nil, "I/O: " + err.Error(),
 		}
