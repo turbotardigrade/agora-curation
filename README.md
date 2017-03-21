@@ -7,12 +7,11 @@ parts of the curation module to ensure they work
 
 # Prerequisites
 Make sure you have installed:  
-1. sqlite3
-2. Python 2.6+
-3. numpy
-4. scipy
-5. scikit-learn
-6. PyInstaller
+1. Python 2.6+
+2. numpy
+3. scipy
+4. scikit-learn
+5. PyInstaller
 
 # Building
 ```
