@@ -38,6 +38,7 @@ def handle_job():
                         }
             print json.dumps(result, separators=(',', ': ')) + "\n"
             sys.stdout.flush()
+            break
         try:
             function = getattr(curation, job["command"])
             job_result = function(job["arguments"])
