@@ -175,14 +175,14 @@ def _transform_comment(data):
 # post and comment storage
 
 def _store_post(data, cursor):
-    sql = """ INSERT INTO posts(title, content, hash, alias, timestamp)
+    sql = """ INSERT OR IGNORE INTO posts(title, content, hash, alias, timestamp)
               VALUES (?, ?, ?, ?, ?) """
     cursor.execute(sql, [data['Title'], data['Content'],
                          data['Hash'], data['Alias'],
                          data['Timestamp']])
 
 def _store_comment(data, cursor):
-    sql = """ INSERT INTO comments(content, hash, alias, timestamp)
+    sql = """ INSERT OR IGNORE INTO comments(content, hash, alias, timestamp)
               VALUES (?, ?, ?, ?) """
     cursor.execute(sql, [data['Content'], data['Hash'], data['Alias'], data['Timestamp']])
 
