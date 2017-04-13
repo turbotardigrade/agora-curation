@@ -163,26 +163,22 @@ def _transform_post(data):
 def _transform_comment(data):
     """ The data format of the trained schema is:
         data['Content'] transformed by bigram_vectorizer (1024 features)
-        data['Content'] transformed by word_vectorizer (1024 features)
-        data['Hash'] transformed by word_vectorizer (1024 features)
-        data['Alias'] transformed by word_vectorizer (1024 features) """
+        data['Content'] transformed by word_vectorizer (1024 features) """
     content_bigram = bigram_vectorizer.transform([data['Content']])
     content_word = word_vectorizer.transform([data['Content']])
-    hash_id = word_vectorizer.transform([data['Hash']])
-    alias = word_vectorizer.transform([data['Alias']])
-    return sparse.hstack([content_bigram, content_word, hash_id, alias])
+    return sparse.hstack([content_bigram, content_word])
 
 # post and comment storage
 
 def _store_post(data, cursor):
-    sql = """ INSERT OR IGNORE INTO posts(title, content, hash, alias, timestamp)
+    sql = """ INSERT INTO posts(title, content, hash, alias, timestamp)
               VALUES (?, ?, ?, ?, ?) """
     cursor.execute(sql, [data['Title'], data['Content'],
                          data['Hash'], data['Alias'],
                          data['Timestamp']])
 
 def _store_comment(data, cursor):
-    sql = """ INSERT OR IGNORE INTO comments(content, hash, alias, timestamp)
+    sql = """ INSERT INTO comments(content, hash, alias, timestamp)
               VALUES (?, ?, ?, ?) """
     cursor.execute(sql, [data['Content'], data['Hash'], data['Alias'], data['Timestamp']])
 
